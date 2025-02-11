@@ -7,7 +7,7 @@ set -euo pipefail
 
 if ! [ -e "!{fastaIndex}" ]
 then
-    rm -f "!{fastaIndex}"
+   continue #    rm -f "!{fastaIndex}"
 fi
 
 # Give a larger -d option than the default 8000 as that is too few for some cases.

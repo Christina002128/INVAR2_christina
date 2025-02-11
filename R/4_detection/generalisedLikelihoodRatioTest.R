@@ -453,9 +453,9 @@ main <- function(scriptArgs)
     # For the time being, remove all rows that fail CONTAMINATION_RISK.PASS
     # Might want to revisit this decision, and possibly make it a condition
     # in the "crossing" table below.
-
-    mutationsTable <- mutationsTable %>%
-        filter(CONTAMINATION_RISK.PASS)
+# CZ modified (comment it out), should not aviod the high allele samples from being detected.
+#    mutationsTable <- mutationsTable %>%
+#        filter(CONTAMINATION_RISK.PASS)
 
     if (nrow(mutationsTable) == 0)
     {

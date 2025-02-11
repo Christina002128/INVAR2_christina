@@ -18,6 +18,9 @@ parseOptions <- function()
     defaultMarker <- "<REQUIRED>"
 
     options_list <- list(
+        make_option(c("--chromosome"), type="character", metavar="character",
+                    dest="CHROMOSOME", help="The file splitted by which chromosome",
+                    default=defaultMarker),
         make_option(c("--mutations"), type="character", metavar="file",
                     dest="MUTATIONS_TABLE_FILE", help="The mutations table file (RDS) created by createMutationsTable.R",
                     default=defaultMarker),
@@ -147,7 +150,7 @@ addLocusNoisePass <- function(mutationTable, errorRateTable)
 # Part of main, where this code is run with and without cosmic.
 #
 
-doMain <- function(withCosmic, mutationTable, layoutTable, lociErrorRateTable)
+doMain <- function(withCosmic, chromosome, mutationTable, layoutTable, lociErrorRateTable)
 {
     assert_that(is.flag(withCosmic), msg = "withCosmic must be a logical.")
 
@@ -189,7 +192,7 @@ doMain <- function(withCosmic, mutationTable, layoutTable, lociErrorRateTable)
         LOCUS_NOISE.BOTH_STRANDS = bothFilters
     )
 
-    saveRDS(allErrorRates, str_c('error_rates.off_target.', cosmicFilePart, '.rds'))
+    saveRDS(allErrorRates, str_c('error_rates.off_target.', cosmicFilePart, '.' , chromosome ,'.rds'))
 
     allErrorRates
 }
@@ -221,7 +224,7 @@ main <- function(scriptArgs)
                                  maxBackgroundMeanAF = scriptArgs$MAX_BACKGROUND_ALLELE_FREQUENCY,
                                  isBloodSpot = scriptArgs$BLOODSPOT)
 
-    saveRDS(lociErrorRateTable, 'locus_error_rates.off_target.rds')
+    saveRDS(lociErrorRateTable, paste0('locus_error_rates.off_target.', scriptArgs$CHROMOSOME,'.rds'))
 
     # To make it as similar as possible to the old pipeline output when saved.
     # Aids comparison.
@@ -229,11 +232,11 @@ main <- function(scriptArgs)
     lociErrorRateTable %>%
         select(-LOCUS_NOISE.PASS) %>%
         arrange(CHROM, POS, TRINUCLEOTIDE) %>%
-        exportTSV('locus_error_rates.off_target.tsv')
+        exportTSV(paste0('locus_error_rates.off_target.', scriptArgs$CHROMOSOME,'.tsv'))
 
     # Calculate the error rates with filters and with or without COSMIC.
 
-    mclapply(c(TRUE, FALSE), doMain, mutationTable, layoutTable, lociErrorRateTable)
+    mclapply(c(TRUE, FALSE), doMain, scriptArgs$CHROMOSOME , mutationTable, layoutTable, lociErrorRateTable)
 }
 
 # Launch it.

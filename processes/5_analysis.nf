@@ -1,7 +1,7 @@
 process runAnalysis
 {
-    memory '4g'
-    time   '6h'
+    memory '100g'
+    time   '12h'
 
     publishDir params.ANALYSIS_DIR, mode: 'link', overwrite: true
 

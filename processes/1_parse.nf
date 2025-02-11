@@ -93,7 +93,8 @@ process tabixSnp
 {
     tag "${sampleId}"
 
-    memory '64m'
+    memory '5g'
+    time '10h'
 
     input:
         each path(tabixDatabase)
@@ -113,7 +114,8 @@ process tabixCosmic
 {
     tag "${sampleId}"
 
-    memory '64m'
+    memory '5g'
+    time '10h'
 
     input:
         each path(tabixDatabase)
@@ -133,7 +135,8 @@ process trinucleotide
 {
     tag "${sampleId}"
 
-    memory '32m'
+    memory '5g'
+    time '10h'
 
     input:
         each path(fastaReference)
@@ -172,22 +175,49 @@ process annotateMutation
         """
 }
 
-process createMutationsTable
+process splitByChromosome
 {
-    memory '100g'
-    time   '10h'
-    cpus   { Math.min(params.MAX_CORES, mutationsFiles.size()) }
-
+    tag "${sampleId}"
+    memory '10g'
+    time '20h'
+    cpus '4'
     input:
-        path mutationsFiles
-        path tumourMutationsFile
+    	tuple val(sampleId), path(annotatedFile)
 
     output:
-        path 'mutation_table.filtered.rds', emit: "filteredMutationsFile"
+    	tuple val(sampleId), path("*_split.mutations.tsv")
+
+    shell:
+        """
+        outfilePre="${annotatedFile}"
+            header=\$(head -n 1 ${annotatedFile})
+            # Extract unique chromosome names from the first column (skipping the header)
+            chroms=\$(tail -n +2 ${annotatedFile} | awk -F'\t' '{print \$1}' | sort | uniq)
+            for chrom in \$chroms; do
+                outfile=\${outfilePre%%.mutations.tsv}_\${chrom}_split.mutations.tsv
+                echo "\$header" > \$outfile
+                awk -F'\t' -v chrom="\$chrom" 'NR>1 && \$1==chrom {print}' ${annotatedFile} >> \$outfile
+            done
+        """
+
+}
+
+process createMutationsTable
+{
+    memory '50g'
+    time   '20h'
+    cpus   '4'
+
+    input:
+        tuple val(chrom), path(mutationsFiles)
+	    path tumourMutationsFile
+    output:
+        tuple val(chrom), path("mutation_table.filtered.${chrom}.rds"), emit : "filteredMutationsFile"
 
     shell:
         """
         Rscript --vanilla "!{params.projectHome}/R/1_parse/createMutationsTable.R" \
+            --chromosome="!{chrom}" \
             --tumour-mutations="!{tumourMutationsFile}" \
             --cosmic-threshold=!{params.COSMIC_THRESHOLD} \
             --mqsb-threshold=!{params.MQSB_THRESHOLD} \
@@ -202,29 +232,55 @@ process createMutationsTable
 
 process offTargetErrorRates
 {
-    memory '300g'
+    memory '100g'
     time   '24h'
-    cpus   { Math.min(params.MAX_CORES, 2) }
-
-    publishDir params.RESULTS_DIR, mode: 'link', overwrite: true, pattern: "error_rates.*.rds"
-
+    cpus   3
     input:
-        path mutationsFile
+        tuple val(chrom), path(mutationsFile)
         path layoutFile
 
     output:
+        tuple val(chrom), path("locus_error_rates.off_target.${chrom}.rds"), emit: 'locusErrorRates'
+        tuple val(chrom), path("error_rates.off_target.cosmic.${chrom}.rds"), emit: "cosmicErrorRates"
+        tuple val(chrom), path("error_rates.off_target.no_cosmic.${chrom}.rds"), emit: "noCosmicErrorRates"
+
+    shell:
+        """
+        Rscript --vanilla "!{params.projectHome}/R/1_parse/offTargetErrorRates.R" \
+            --chromosome="!{chrom}" \
+            --mutations="!{mutationsFile}" \
+            --layout="!{layoutFile}" \
+            --control-proportion=!{params.PROPORTION_OF_CONTROLS} \
+            --max-background-allele-frequency=!{params.MAXIMUM_BACKGROUND_MEAN_ALLELE_FREQUENCY} \
+            !{params.IS_BLOODSPOT ? "--bloodspot" : ""}
+        """
+}
+
+process mergeChromosomes 
+{
+    memory '100g'
+    time   '20h'
+    cpus 4
+    publishDir params.RESULTS_DIR, mode: 'link', overwrite: true, pattern: "error_rates.*.rds"
+    input:
+	    path mutationsFiles // from mutationsFilesChannel
+        path locusErrorRatesFiles // from locusFilesChannel
+        path cosmicErrorRatesFiles // from cosmicFilesChannel
+        path noCosmicErrorRatesFiles // from noCosmicFilesChannel
+
+    output:
+        path 'mutation_table.filtered.rds', emit: "filteredMutationsFile"
         path 'locus_error_rates.off_target.rds', emit: 'locusErrorRates'
         path 'error_rates.off_target.cosmic.rds', emit: "cosmicErrorRates"
         path 'error_rates.off_target.no_cosmic.rds', emit: "noCosmicErrorRates"
 
     shell:
         """
-        Rscript --vanilla "!{params.projectHome}/R/1_parse/offTargetErrorRates.R" \
-            --mutations="!{mutationsFile}" \
-            --layout="!{layoutFile}" \
-            --control-proportion=!{params.PROPORTION_OF_CONTROLS} \
-            --max-background-allele-frequency=!{params.MAXIMUM_BACKGROUND_MEAN_ALLELE_FREQUENCY} \
-            !{params.IS_BLOODSPOT ? "--bloodspot" : ""}
+        Rscript --vanilla "!{params.projectHome}/R/1_parse/mergeChromosomes.R" \
+        --mutationsFile="!{mutationsFiles}" \
+        --locusError="!{locusErrorRatesFiles}" \
+        --cosmicError="!{cosmicErrorRatesFiles}" \
+        --noCosmicError="!{noCosmicErrorRatesFiles}" 
         """
 }
 
@@ -315,20 +371,37 @@ workflow parse
             .join(tabixCosmic.out, by: 0, failOnDuplicate: true, failOnMismatch: true)
             .join(trinucleotide.out, by: 0, failOnDuplicate: true, failOnMismatch: true)
 
-        mutationsFiles =
-            annotateMutation(byBamMutationChannel)
-                .map { sampleId, file -> file }
-                .collect()
+        annotatedChannel = annotateMutation(byBamMutationChannel)
 
-        createMutationsTable(mutationsFiles, tumourMutationsChannel)
-
-        offTargetErrorRates(createMutationsTable.out.filteredMutationsFile, layoutChannel)
+        // Split each annotated file into per-chromosome files and process by chromosome
+        splitByChromChannel = annotatedChannel | splitByChromosome
+        byChromFiles = splitByChromChannel.flatMap { sampleId, fileList ->
+            // fileList may be a single file or a list of files
+            def files = fileList instanceof List ? fileList : [ fileList ]
+            files.collect { file ->
+                // filenames are like: sampleId_chr1.mutations.tsv,
+                // tokenize on '_' and then remove the suffix to get the chromosome value.
+                def chrom = file.getName().tokenize('_')[1].replace('_split.mutations.tsv','')
+                tuple(chrom, file)
+                }
+            }  
+	    groupedByChrom = byChromFiles.groupTuple(by: 0)
+        chromMutationsChannel = createMutationsTable(groupedByChrom, tumourMutationsChannel.first())
+        chromOffTargetRatesChannel = offTargetErrorRates(chromMutationsChannel, layoutChannel.first())
+        // merge all the chromosome files
+        mutationsFilesChannel = chromMutationsChannel.filteredMutationsFile.map { chrom, file -> file }.collect()
+        locusFilesChannel = chromOffTargetRatesChannel.locusErrorRates.map { chrom, file -> file }.collect()
+        cosmicFilesChannel = chromOffTargetRatesChannel.cosmicErrorRates.map { chrom, file -> file }.collect()
+        noCosmicFilesChannel = chromOffTargetRatesChannel.noCosmicErrorRates.map { chrom, file -> file }.collect()
+        // mutationsFilesChannel.view()        
+        mergeChannel = mergeChromosomes(mutationsFilesChannel, locusFilesChannel, cosmicFilesChannel, noCosmicFilesChannel)
+        //mergeChannel.view()
 
         createOnTargetMutationsTable(
-            createMutationsTable.out.filteredMutationsFile,
+            mergeChannel.filteredMutationsFile,
             tumourMutationsChannel,
             layoutChannel,
-            offTargetErrorRates.out.noCosmicErrorRates)
+            mergeChannel.noCosmicErrorRates)
 
         onTargetErrorRatesAndFilter(createOnTargetMutationsTable.out.onTargetMutationsFile,
                                     tumourMutationsChannel)
@@ -336,6 +409,6 @@ workflow parse
         onTargetMutationsFile = onTargetErrorRatesAndFilter.out.onTargetMutationsFile
         onTargetLocusErrorRatesFile = onTargetErrorRatesAndFilter.out.locusErrorRates
         backgroundErrorRatesFile = createOnTargetMutationsTable.out.backgroundErrorRates
-        offTargetErrorRatesWithCosmic = offTargetErrorRates.out.cosmicErrorRates
-        offTargetErrorRatesNoCosmic = offTargetErrorRates.out.noCosmicErrorRates
+        offTargetErrorRatesWithCosmic = mergeChannel.cosmicErrorRates
+        offTargetErrorRatesNoCosmic = mergeChannel.noCosmicErrorRates
 }

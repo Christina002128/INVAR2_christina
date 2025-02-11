@@ -172,11 +172,10 @@ estimate_real_length_probability <- function(fragment_length, counts, bw_adjust 
         # Need to guard against too few points.
         if (length(counts) > 1)
         {
-            assert_that(sum(counts) > 0, msg = str_c("Sum of ", length(counts), " counts is zero. Cannot create weights."))
-
+            # assert_that(sum(counts) > 0, msg = "Sum of counts is zero.")
+            if(sum(counts) == 0){weights<-counts / 1}
             # Weights take into account the TOTAL number of reads of all sizes
-            weights <- counts / sum(counts)
-
+            else{weights <- counts / sum(counts)}
             # KDE of fragment length function
             # but KDE only includes reads from min to max fragment length defined
             den <- density(fragment_length, weights = weights, adjust = bw_adjust,from = min_length - 0.5, to = max_length + 0.5)

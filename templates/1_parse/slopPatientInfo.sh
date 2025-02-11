@@ -17,4 +17,4 @@ bedtools slop -i mutationlist.bed -g slopindex.tsv -b !{params.SLOP_BASES} > slo
 Rscript --vanilla "!{params.projectHome}/R/1_parse/filterSloppedBed.R" slopped.bed "!{filteredBedFile}"
 
 # Clean up
-rm -f mutationlist.bed slopped.bed slopindex.tsv
+#rm -f mutationlist.bed slopped.bed slopindex.tsv

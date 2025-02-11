@@ -18,10 +18,13 @@ def processPileUps(samfile, output_file, chrom, pos, ref, alt, args):
                     SNV_base = read.alignment.query_sequence[read.query_position]
                     size = abs(read.alignment.template_length)
                     mean_BQ=sum(read.alignment.query_alignment_qualities)/len(read.alignment.query_alignment_qualities)
+
                     if size >= args.minLength and size <= args.maxLength and \
                             read.alignment.mapping_quality >= args.minMQ and \
                             mean_BQ>= args.minBQ:
                         output_file.write("{}\t{:d}\t{}\t{}\t{}\t{:d}\n".format(chrom, pos, ref, alt, SNV_base, size))
+
+
 
 # required variables
 parser = argparse.ArgumentParser()

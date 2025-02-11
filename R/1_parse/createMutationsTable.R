@@ -17,6 +17,9 @@ parseOptions <- function()
     defaultMarker <- "<REQUIRED>"
 
     options_list <- list(
+        make_option(c("--chromosome"), type="character", metavar="character",
+                    dest="CHROMOSOME", help="The file splitted by which chromosome",
+                    default=defaultMarker),
         make_option(c("--tumour-mutations"), type="character", metavar="file",
                     dest="TUMOUR_MUTATIONS_FILE", help="The source patient mutations file",
                     default=defaultMarker),
@@ -191,7 +194,7 @@ main <- function(scriptArgs)
 
     if (nrow(multiallelicBlacklist) > 0)
     {
-        exportTSV(multiallelicBlacklist, 'multiallelic_blacklist.tsv')
+        exportTSV(multiallelicBlacklist, paste0("multiallelic_blacklist.",scriptArgs$CHROMOSOME,".tsv"))
     }
 
     mutationTable.biallelic <- mutationTable.filtered %>%
@@ -207,7 +210,7 @@ main <- function(scriptArgs)
     mutationTable.biallelic %>%
         removeMutationTableDerivedColumns() %>%
         arrangeMutationTableForExport() %>%
-        saveRDS("mutation_table.filtered.rds")
+        saveRDS(paste0("mutation_table.filtered.",scriptArgs$CHROMOSOME,".rds"))
 }
 
 # Launch it.

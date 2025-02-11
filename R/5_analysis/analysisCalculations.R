@@ -127,9 +127,9 @@ adjustInvarScores <- function(invarScoresTable, layoutTable, scoreSpecificity)
       filter(USING_SIZE == condition$USING_SIZE &
                LOCUS_NOISE.PASS == condition$LOCUS_NOISE.PASS &
                BOTH_STRANDS.PASS == condition$BOTH_STRANDS.PASS &
-               OUTLIER.PASS == condition$OUTLIER.PASS) %>%
-      filter(PATIENT_SPECIFIC | CONTAMINATION_RISK.PASS)
-
+               OUTLIER.PASS == condition$OUTLIER.PASS) #%>%
+      #filter(PATIENT_SPECIFIC | CONTAMINATION_RISK.PASS)
+# CZ modified, remove the CONTAMINATION_RISK.PASS filter
     scores.general <- scores %>%
       filter(!PATIENT_SPECIFIC) %>%
       arrange(ADJUSTED_INVAR_SCORE)
@@ -181,7 +181,7 @@ scaleInvarScores <- function(adjustedScoresTable, minInformativeReads, maxBackgr
 
   contaminationRiskSamples <- specific %>%
     filter(!USING_SIZE & ADJUSTED_IMAF > maxBackgroundAlleleFreq)
-
+# CZ question, is this where it adjust the INVAR score without contaminated patients?
   nonSpecific <- adjustedScoresTable %>%
     filter(!PATIENT_SPECIFIC & CASE_OR_CONTROL == 'case' &
              !SAMPLE_ID %in% contaminationRiskSamples$SAMPLE_ID)
@@ -395,9 +395,13 @@ mutationTracking <- function(mutationsTable, layoutTable, tumourMutationsTable, 
            UNIQUE_IF_MUTANT_SPECIFIC = ifelse(MUTANT & PATIENT_SPECIFIC, UNIQUE_PATIENT_POS, NA),
            UNIQUE_IF_MUTANT_NON_SPECIFIC = ifelse(MUTANT & !PATIENT_SPECIFIC, UNIQUE_PATIENT_POS, NA),
            # UNIQUE_IF_MUTANT_CASE_OR_CONTROL = ifelse(CASE_OR_CONTROL == 'case', !is.na(UNIQUE_IF_MUTANT_SPECIFIC), !is.na(UNIQUE_IF_MUTANT_NON_SPECIFIC)),
-           PASS_ALL = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS & OUTLIER.PASS & MUTANT, # MUTATED_READS_PER_LOCI > 0
-           ALL_IR = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS & OUTLIER.PASS & PATIENT==PATIENT_MUTATION_BELONGS_TO,
-           ALL_IR_CONTROL = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS & OUTLIER.PASS)
+# CZ modified, remove the CONTAMINATION_RISK.PASS from the pass filter
+PASS_ALL = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & OUTLIER.PASS & MUTANT,
+ALL_IR = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & OUTLIER.PASS & PATIENT==PATIENT_MUTATION_BELONGS_TO,
+ALL_IR_CONTROL = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & OUTLIER.PASS)
+#           PASS_ALL = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS & OUTLIER.PASS & MUTANT, # MUTATED_READS_PER_LOCI > 0
+#           ALL_IR = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS & OUTLIER.PASS & PATIENT==PATIENT_MUTATION_BELONGS_TO,
+#           ALL_IR_CONTROL = LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS & OUTLIER.PASS)
 
   # Only interested in patient specific rows from INVAR scores.
   # LOCUS_NOISE.PASS & BOTH_STRANDS.PASS & CONTAMINATION_RISK.PASS are all true for the current
